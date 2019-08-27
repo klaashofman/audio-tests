@@ -16,20 +16,29 @@ gi.require_version('GLib', '2.0')
 gi.require_version('GObject', '2.0')
 from gi.repository import GLib, GObject, Gst
 
-class agc:
-    def __init__(self, pipe, volume, loop):
+class test:
+    def __init__(self, strategy, pipe, volume, loop):
+        self.strategy = strategy
         self.pipe = pipe
         self.volume = volume
         self.delta = +0.1
         self.loop = loop
+        self.elapsed = 0
 
 class src:
-    def __init__(self, freq):
+    def __init__(self):
         self.src = '''audiotestsrc'''
-        self.freq = freq
+
+    def audiotestsrc(self, freq):
+        self.src = '''audiotestsrc'''
+        self.src += ''' is-live=true name=volume freq=''' + str(freq) + ''' ! audio/x-raw,rate=48000,format=S32LE,channels=1 ! '''
+
+    def filesrc(self, filename):
+        self.src = '''filesrc '''
+        self.src += ''' location=''' + filename + ''' ! wavparse ! '''
 
     def get(self):
-        return self.src + ''' is-live=true name=volume freq=''' + str(self.freq) + ''' ! '''
+        return self.src
 
 class dsp:
     def __init__(self, enable = True, aec=False, noise=False, extended_filter=False, hp_filter=False, agc=True):
@@ -41,8 +50,8 @@ class dsp:
         self.noise_suppression_enable = noise
         self.noise_suppression_level = 1
         self.agc_enable = agc
-        self.agc_target_level_dbfs = 3
-        self.agc_gain_db = 9
+        self.agc_target_level_dbfs = 0
+        self.agc_gain_db = 15
         self.agc_limiter = True
         self.agc_mode = 1
         self.voice_detection = False
@@ -57,6 +66,8 @@ class dsp:
         s += ''' extended-filter=''' +  ( '''true''' if self.extended_filter else '''false''')
         s += ''' noise-suppression=''' + ( '''true''' if self.noise_suppression_enable else '''false''')
         s += ''' gain-control=''' + ( '''true''' if self.agc_enable else '''false''')
+        s += ''' target-level-dbfs=''' + str(self.agc_target_level_dbfs)
+        s += ''' compression-gain-db=''' + str(self.agc_gain_db)
         s += ''' ! '''
         return s
 
@@ -88,16 +99,44 @@ def update_vol(pipe, vol):
     el = pipe.get_by_name("volume")
     el.set_property("volume", vol)
 
-def timeout_cb(pdata):
-    print ("volume" + str(pdata.volume))
+def test_increment(pdata):
+    print("volume" + str(pdata.volume))
     if pdata.volume >= 1.0:
         pdata.delta = -0.1
     if pdata.volume < 0.1:
         # stop the test
         pdata.loop.quit()
+        return False
 
     update_vol(pdata.pipe, pdata.volume)
     pdata.volume += pdata.delta
+    return True
+
+def test_oscillating(pdata):
+    print("count: " + str(pdata.elapsed) + " volume: " + str(pdata.volume))
+    if pdata.elapsed % 3 == 0:
+        pdata.volume = 1.0
+    else:
+        pdata.volume = 0.1
+
+    if pdata.elapsed % 20 == 0:
+        #end the test
+        pdata.loop.quit()
+        return False
+
+    update_vol(pdata.pipe, pdata.volume)
+    return True
+
+def timeout_cb(pdata):
+    pdata.elapsed += 1
+    if pdata.strategy == 'incremental':
+        return test_increment(pdata)
+    if pdata.strategy == 'oscillating':
+        return test_oscillating(pdata)
+    else:
+        print("unkown strategy, aborting...")
+        return False
+
     return True
 
 def main(args):
@@ -106,10 +145,13 @@ def main(args):
 
     volume = 0.1
     file_name = 'test.wav'
+    test_strategy = 'none'
 
     parser = argparse.ArgumentParser(description='gstreamer-agc-testtool')
     parser.add_argument('-a', '--agc', help='enable/disable agc', required=True)
     parser.add_argument('-f', '--file', help='name of output file', required=False)
+    parser.add_argument('-i', '--input', help='name of the input file', required=False)
+    parser.add_argument('-t', '--test', help='test strategy: incremental, oscillating', required=False)
 
     args = vars(parser.parse_args())
     if args['agc'] == 'enable':
@@ -120,11 +162,20 @@ def main(args):
     if args['file']:
         file_name = args[ 'file']
 
-    # 1 khz sinus test tone
-    testsrc = src(1000.0)
+    testsrc = src()
+    if args['input']:
+        input_file = args[ 'input']
+        testsrc.filesrc(filename = input_file)
+    else:
+        # 1 khz sinus test tone
+        testsrc.audiotestsrc(1000.0)
+
+    if args['test']:
+        test_strategy = args[ 'test']
+
     testdsp = dsp(agc=agc_enable)
     testsink = filesink(name=file_name)
-    PIPELINE_DESC = testsrc.get() + ''' audio/x-raw,rate=48000,format=S32LE,channels=1 !  audioconvert !''' + testdsp.get() + ''' wavenc !''' + testsink.get()
+    PIPELINE_DESC = testsrc.get() + ''' audioconvert !''' + testdsp.get() + ''' wavenc !''' + testsink.get()
 
     print("pipeline: gst-launch-1.0 " + PIPELINE_DESC)
 
@@ -135,7 +186,7 @@ def main(args):
     bus.add_signal_watch()
     bus.connect("message", bus_call, loop)
 
-    pdata = agc(pipe, volume, loop)
+    pdata = test(strategy=test_strategy, pipe=pipe, volume=volume, loop=loop)
 
     GLib.timeout_add_seconds(1, timeout_cb, pdata)
 
