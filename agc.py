@@ -11,6 +11,9 @@ import time
 
 import gi
 
+import dsp
+from elements import src,filesink
+
 gi.require_version('Gst', '1.0')
 gi.require_version('GLib', '2.0')
 gi.require_version('GObject', '2.0')
@@ -24,62 +27,6 @@ class test:
         self.delta = +0.1
         self.loop = loop
         self.elapsed = 0
-
-class src:
-    def __init__(self):
-        self.src = '''audiotestsrc'''
-
-    def audiotestsrc(self, freq):
-        self.src = '''audiotestsrc'''
-        self.src += ''' is-live=true name=volume freq=''' + str(freq) + ''' ! audio/x-raw,rate=48000,format=S32LE,channels=1 ! '''
-
-    def filesrc(self, filename):
-        self.src = '''filesrc '''
-        self.src += ''' location=''' + filename + ''' ! wavparse ! '''
-
-    def get(self):
-        return self.src
-
-class dsp:
-    def __init__(self, enable = True, aec=False, noise=False, extended_filter=False, hp_filter=False, agc=True):
-        self.src = ''' webrtcdsp'''
-        self.enable = enable
-        self.echo_cancel_enable = aec
-        self.extended_filter = extended_filter
-        self.high_pass_filter = hp_filter
-        self.noise_suppression_enable = noise
-        self.noise_suppression_level = 1
-        self.agc_enable = agc
-        self.agc_target_level_dbfs = 0
-        self.agc_gain_db = 15
-        self.agc_limiter = True
-        self.agc_mode = 1
-        self.voice_detection = False
-
-    def get(self):
-        if not self.enable:
-            return ''''''
-
-        s = self.src
-        s += ''' echo-cancel=''' + ('''true''' if self.echo_cancel_enable else '''false''')
-        s += ''' high-pass-filter=''' + ( '''true''' if self.high_pass_filter else '''false''')
-        s += ''' extended-filter=''' +  ( '''true''' if self.extended_filter else '''false''')
-        s += ''' noise-suppression=''' + ( '''true''' if self.noise_suppression_enable else '''false''')
-        s += ''' gain-control=''' + ( '''true''' if self.agc_enable else '''false''')
-        s += ''' target-level-dbfs=''' + str(self.agc_target_level_dbfs)
-        s += ''' compression-gain-db=''' + str(self.agc_gain_db)
-        s += ''' ! '''
-        return s
-
-class filesink:
-    def __init__(self, name):
-        self.sink = ''' filesink'''
-        self.name = name
-
-    def get(self):
-        s = self.sink
-        s += ''' location=''' + self.name
-        return s
 
 def bus_call(bus, message, loop):
     t = message.type
@@ -175,7 +122,7 @@ def main(args):
 
     testdsp = dsp(agc=agc_enable)
     testsink = filesink(name=file_name)
-    PIPELINE_DESC = testsrc.get() + ''' audioconvert !''' + testdsp.get() + ''' wavenc !''' + testsink.get()
+    PIPELINE_DESC = testsrc.get() + ''' ! audio/x-raw,rate=48000,format=S32LE,channels=1 !  audioconvert !''' + testdsp.get() + ''' wavenc !''' + testsink.get()
 
     print("pipeline: gst-launch-1.0 " + PIPELINE_DESC)
 

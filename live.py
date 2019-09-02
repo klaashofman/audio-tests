@@ -6,16 +6,17 @@ capture from microphone adjust signal levels and print out dB
 import argparse
 import math
 import sys
-import random
-import time
-import agc
-
 import gi
+import select
+
+import agc
+from elements import Mic, Level, Amplify
 
 gi.require_version('Gst', '1.0')
 gi.require_version('GLib', '2.0')
 gi.require_version('GObject', '2.0')
-from gi.repository import GLib, GObject, Gst
+gi.require_version('GstController', '1.0')
+from gi.repository import GLib, GObject, Gst, GstController
 
 def bus_call(bus, message, loop):
     t = message.type
@@ -42,20 +43,47 @@ def bus_call(bus, message, loop):
         loop.quit()
     return True
 
-class Mic:
-    def __init__ (self, alsadev="plughw:1"):
-        self.dev = alsadev
+def update_vol(pdata):
+    print ("volume:" + str(pdata.vol))
+    cs = pdata.cs
+    cs.set(1, pdata.vol)
+    pdata.vol += 1.0
 
-    def get(self):
-        s = '''alsasrc device=''' + self.dev
-        return s
+    if pdata.vol == 10.0:
+        pdata.vol =0
 
-class Level:
-    def __init__ (self):
-        pass
-    def get(self):
-        s = '''level name=level'''
-        return s
+    #el = pipe.get_by_name("amp")
+    #vol  = el.get_property("amplification")
+    #vol += step
+    #print ("new volume: " + str(vol))
+    #el.set_property("amplification", step)
+
+def keypress_cb(pdata):
+    pdata.vol += 1.0
+    update_vol(pdata)
+    return True
+
+    input = select.select([sys.stdin], [], [], 1)[0]
+    if input:
+        key = sys.stdin.readline().rstrip()
+        print("key:" + key)
+        if key == '+':
+            pdata.vol += 1.0
+            update_vol(pdata)
+        elif key == '-':
+            pdata.vol -= 1.0
+            update_vol(pdata)
+    return True
+
+class Live:
+    def __init__(self, pipe):
+        self.pipe = pipe
+        self.vol = 1.0
+        self.cs = GstController.InterpolationControlSource.new()
+        el = pipe.get_by_name("amp")
+        el.add_control_binding(GstController.DirectControlBinding.new(el, "amplification", self.cs))
+        # control.set_property("volume", GstController.InterpolationMode.LINEAR)
+        # control.set_property("amplification", GstController.InterpolationMode.LINEAR)
 
 def main(args):
     GObject.threads_init()
@@ -72,7 +100,8 @@ def main(args):
         src = Mic()
 
     level = Level()
-    PIPELINE_DESC = src.get() + ''' ! audio/x-raw,rate=48000,format=S32LE,channels=1 ! audioconvert ! ''' + level.get() + ''' ! fakesink'''
+    amp = Amplify()
+    PIPELINE_DESC = src.get() + ''' ! ''' + amp.get() + ''' ! audio/x-raw,rate=48000,format=S32LE,channels=1 ! audioconvert ! ''' + level.get() + ''' ! autoaudiosink'''
 
     print("pipeline: gst-launch-1.0 " + PIPELINE_DESC)
 
@@ -82,6 +111,11 @@ def main(args):
     bus = pipe.get_bus()
     bus.add_signal_watch()
     bus.connect("message", bus_call, loop)
+
+    live = Live(pipe=pipe)
+
+    # poll for keyboard events
+    GLib.timeout_add(100, keypress_cb, live)
 
     pipe.set_state(Gst.State.PLAYING)
 
