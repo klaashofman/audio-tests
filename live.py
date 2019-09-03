@@ -18,13 +18,16 @@ gi.require_version('GObject', '2.0')
 gi.require_version('GstController', '1.0')
 from gi.repository import GLib, GObject, Gst, GstController
 
+LOGGING=False
+
+
 def bus_call(bus, message, loop):
     t = message.type
     if t == Gst.MessageType.ELEMENT:
         s = Gst.Message.get_structure(message)
         name =  s.get_name()
         # print ("bus callback: element:" + name)
-        if name == 'level':
+        if name == 'level' and LOGGING == True:
             # limitiation: only works with mono channel
             rms_db = s.get_value("rms")[0]
             rms_norm = math.pow(10, rms_db / 20)
@@ -46,7 +49,8 @@ def bus_call(bus, message, loop):
 def update_vol(pdata):
     print ("volume:" + str(pdata.vol))
     cs = pdata.cs
-    cs.set(1, pdata.vol)
+    rv = cs.set(1, pdata.vol)
+    print ("cs: " + rv)
     pdata.vol += 1.0
 
     if pdata.vol == 10.0:
@@ -59,10 +63,6 @@ def update_vol(pdata):
     #el.set_property("amplification", step)
 
 def keypress_cb(pdata):
-    pdata.vol += 1.0
-    update_vol(pdata)
-    return True
-
     input = select.select([sys.stdin], [], [], 1)[0]
     if input:
         key = sys.stdin.readline().rstrip()
@@ -73,6 +73,11 @@ def keypress_cb(pdata):
         elif key == '-':
             pdata.vol -= 1.0
             update_vol(pdata)
+        elif key == 'L':
+            global LOGGING=True
+        elif key == 'l':
+            global LOGGING=False
+
     return True
 
 class Live:

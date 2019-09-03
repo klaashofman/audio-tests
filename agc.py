@@ -12,7 +12,7 @@ import time
 import gi
 
 import dsp
-from elements import src,filesink
+from elements import src,FileSink
 
 gi.require_version('Gst', '1.0')
 gi.require_version('GLib', '2.0')
@@ -121,7 +121,7 @@ def main(args):
         test_strategy = args[ 'test']
 
     testdsp = dsp(agc=agc_enable)
-    testsink = filesink(name=file_name)
+    testsink = FileSink(name=file_name)
     PIPELINE_DESC = testsrc.get() + ''' ! audio/x-raw,rate=48000,format=S32LE,channels=1 !  audioconvert !''' + testdsp.get() + ''' wavenc !''' + testsink.get()
 
     print("pipeline: gst-launch-1.0 " + PIPELINE_DESC)

@@ -1,7 +1,7 @@
 # !/usr/bin/env python3
 
 '''
-capture from microphone adjust signal levels and print out dB
+capture from microphone and send audio data to file and speaker
 '''
 import argparse
 import math
@@ -62,10 +62,12 @@ def main(args):
     mic = Mic(alsadev=mic_dev)
     level = Level()
     filter = HighPassAudio(cutoff=300)
+    amply = Amplify()
+    amply.set(50.0)
     speaker = Speaker(alsadev=speak_dev)
     filesink = FileSink("capture.wav")
 
-    PIPELINE_DESC = mic.get() + ''' ! audio/x-raw,rate=48000,format=S32LE,channels=1 ! audioconvert ! ''' + filter.get() \
+    PIPELINE_DESC = mic.get() + ''' ! audio/x-raw,rate=48000,format=S32LE,channels=1 ! audioconvert ! ''' + filter.get() + ''' ! ''' + amply.get() \
                     + ''' ! audioconvert ! ''' + level.get() + ''' ! tee name=t ! queue ! audioconvert ! ''' + speaker.get() \
                     + ''' t. ! queue ! audioconvert ! wavenc ! ''' + filesink.get()
 
