@@ -32,6 +32,16 @@ class src:
     def get(self):
         return self.src
 
+
+class Wavesrc:
+    def __init__(self, filename):
+        self.src = '''filesrc '''
+        self.src += ''' location=''' + filename +  ''' ! wavparse '''
+
+    def get(self):
+        return self.src
+
+
 class FileSink:
     def __init__(self, name):
         self.sink = ''' filesink'''
@@ -51,10 +61,12 @@ class Mic:
         return s
 
 class Level:
-    def __init__ (self):
+    def __init__ (self, name="level"):
+        self.name = name
         pass
+
     def get(self):
-        s = ''' level name=level'''
+        s = ''' level name=''' + self.name
         return s
 
 class Amplify:
