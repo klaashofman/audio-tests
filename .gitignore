@@ -1,0 +1,7 @@
+*.wav
+*.dot
+*.pdf
+examples-old
+examples
+.idea
+__pycache__
